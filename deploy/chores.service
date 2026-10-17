@@ -1,0 +1,16 @@
+[Unit]
+Description=Household chore tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chores
+WorkingDirectory=/opt/chores
+EnvironmentFile=/opt/chores/.env
+ExecStart=/usr/bin/node /opt/chores/src/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
