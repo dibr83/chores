@@ -70,7 +70,12 @@ function choreForm(chore, recipients, action, submitLabel) {
 </form>`;
 }
 
+const PLACEHOLDER_BASE = /192\.168\.1\.50/;
+
 function adminPage(chores, recipients, baseUrl) {
+  const baseWarning = PLACEHOLDER_BASE.test(baseUrl)
+    ? `<p class="bad">BASE_URL is still the example address (${esc(baseUrl)}). Set BASE_URL in .env to this VM's real address, then restart the service. The tag URLs below are wrong until you do.</p>`
+    : '';
   const choreList = chores.length
     ? chores.map((c) => `<section>
   <h2>${esc(c.name)} ${c.active ? '' : '<span class="bad">(off)</span>'}</h2>
@@ -89,6 +94,7 @@ function adminPage(chores, recipients, baseUrl) {
     : '<li><em>None yet</em></li>';
 
   return page('Chores', `
+${baseWarning}
 <p class="noprint"><a href="/scans">Scan log</a> · <a href="/report">Printable report</a></p>
 <h2>Chores</h2>${choreList}
 <details open><summary><strong>Add a chore</strong></summary>${choreForm(null, recipients, '/chores', 'Add chore')}</details>

@@ -163,3 +163,17 @@ test('missed chores alert once after deadline, only on scheduled days', async ()
   assert.equal(sent[0].title, 'Chore Missed');
   assert.equal(sent[0].message, "Cat Litter hasn't been logged today");
 });
+
+test('admin page warns when BASE_URL is still the example placeholder', async () => {
+  const db = open(':memory:');
+  const app = createApp(db, { adminUser: 'admin', adminPass: 'pw', baseUrl: 'http://192.168.1.50:3000' });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const auth = 'Basic ' + Buffer.from('admin:pw').toString('base64');
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/`, { headers: { Authorization: auth } });
+    assert.match(await res.text(), /still the example address/);
+  } finally {
+    server.close();
+  }
+});
