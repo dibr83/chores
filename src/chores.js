@@ -1,7 +1,9 @@
 'use strict';
 
 const crypto = require('crypto');
-const { normalizeDays, validTime, localParts, isDueOn } = require('./time');
+const {
+  normalizeDays, validTime, localParts, isDueOn, addDays, addMonths, dowOf,
+} = require('./time');
 
 const newToken = () => crypto.randomBytes(16).toString('hex');
 
@@ -68,16 +70,90 @@ function deleteRecipient(db, id) {
   db.prepare('DELETE FROM recipients WHERE id = ?').run(Number(id));
 }
 
-// Logs today's completion once per chore per local day.
-function recordCompletion(db, chore, now = new Date()) {
+const PRUNE_MONTHS = 6;
+const MAX_REPORT_DAYS = 186;
+
+// Handles one NFC tap. Logs it once per chore per local day, and records every tap in tap_events.
+// outcome: logged | repeat | inactive | unknown
+function recordTap(db, token, now = new Date()) {
   const { date, dow } = localParts(now);
-  const info = db.prepare(
+  const tapped_at = now.toISOString();
+  const addEvent = (choreId, choreName, outcome) => db.prepare(
+    'INSERT INTO tap_events (tapped_at, date, chore_id, chore_name, outcome) VALUES (?, ?, ?, ?, ?)'
+  ).run(tapped_at, date, choreId, choreName, outcome);
+
+  const chore = findByToken(db, token);
+  if (!chore) {
+    addEvent(null, 'Unknown tag', 'unknown');
+    return { outcome: 'unknown' };
+  }
+  if (!chore.active) {
+    addEvent(chore.id, chore.name, 'inactive');
+    return { outcome: 'inactive', chore, date };
+  }
+  const created = db.prepare(
     'INSERT OR IGNORE INTO completions (chore_id, date, completed_at) VALUES (?, ?, ?)'
-  ).run(chore.id, date, now.toISOString());
-  return { date, created: info.changes === 1, scheduled: isDueOn(chore.days, dow) };
+  ).run(chore.id, date, tapped_at).changes === 1;
+  const outcome = created ? 'logged' : 'repeat';
+  addEvent(chore.id, chore.name, outcome);
+  return { outcome, chore, date, scheduled: isDueOn(chore.days, dow) };
+}
+
+function listTaps(db, { from, to } = {}) {
+  if (from && to) {
+    return db.prepare('SELECT * FROM tap_events WHERE date BETWEEN ? AND ? ORDER BY tapped_at DESC, id DESC')
+      .all(from, to);
+  }
+  return db.prepare('SELECT * FROM tap_events ORDER BY id DESC LIMIT 200').all();
+}
+
+// Per-day, per-chore status for the printable report. Only days up to today are included.
+// Cell status: logged | missed | pending (today, before deadline) | off (not scheduled that day)
+function buildReport(db, { from, to, now = new Date() }) {
+  const today = localParts(now);
+  const end = to > today.date ? today.date : to;
+  const chores = db.prepare('SELECT * FROM chores WHERE active = 1 ORDER BY deadline, name').all();
+  const done = new Set(
+    db.prepare('SELECT chore_id, date FROM completions WHERE date BETWEEN ? AND ?').all(from, end)
+      .map((r) => `${r.chore_id}|${r.date}`)
+  );
+
+  const days = [];
+  for (let d = from; d <= end; d = addDays(d, 1)) {
+    const dow = dowOf(d);
+    const cells = chores.map((c) => {
+      if (!isDueOn(c.days, dow)) return 'off';
+      if (done.has(`${c.id}|${d}`)) return 'logged';
+      if (d === today.date && today.time < c.deadline) return 'pending';
+      return 'missed';
+    });
+    days.push({ date: d, dow, cells });
+  }
+
+  const totals = chores.map((c, i) => {
+    const count = (s) => days.reduce((n, day) => n + (day.cells[i] === s ? 1 : 0), 0);
+    return { name: c.name, deadline: c.deadline, logged: count('logged'), missed: count('missed'), pending: count('pending') };
+  });
+  return { from, to: end, chores, days, totals };
+}
+
+// Keeps history for PRUNE_MONTHS. Returns how many rows were removed.
+function pruneHistory(db, now = new Date()) {
+  const cutoff = addMonths(localParts(now).date, -PRUNE_MONTHS);
+  return db.transaction(() => ({
+    taps: db.prepare('DELETE FROM tap_events WHERE date < ?').run(cutoff).changes,
+    completions: db.prepare('DELETE FROM completions WHERE date < ?').run(cutoff).changes,
+    alerts: db.prepare('DELETE FROM alerts WHERE date < ?').run(cutoff).changes,
+  }))();
+}
+
+// Earliest date the report may show, and the default range (last 7 days).
+function reportBounds(now = new Date()) {
+  const today = localParts(now).date;
+  return { today, earliest: addMonths(today, -PRUNE_MONTHS), maxDays: MAX_REPORT_DAYS };
 }
 
 module.exports = {
   listChores, listRecipients, findByToken, saveChore, toggleChore, deleteChore,
-  addRecipient, deleteRecipient, recordCompletion,
+  addRecipient, deleteRecipient, recordTap, listTaps, buildReport, pruneHistory, reportBounds,
 };

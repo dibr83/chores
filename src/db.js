@@ -45,6 +45,18 @@ function open(file = process.env.DB_FILE || path.join(__dirname, '..', 'data', '
       sent_at  TEXT NOT NULL,
       PRIMARY KEY (chore_id, date)
     );
+
+    -- Every tap, including repeats and unknown tags. Keeps the chore name so history
+    -- still reads correctly after a chore is deleted. chore_id is not a foreign key for that reason.
+    CREATE TABLE IF NOT EXISTS tap_events (
+      id         INTEGER PRIMARY KEY,
+      tapped_at  TEXT NOT NULL,             -- ISO timestamp (UTC)
+      date       TEXT NOT NULL,             -- YYYY-MM-DD, local
+      chore_id   INTEGER,                   -- NULL for unknown tags
+      chore_name TEXT NOT NULL,
+      outcome    TEXT NOT NULL              -- logged | repeat | inactive | unknown
+    );
+    CREATE INDEX IF NOT EXISTS tap_events_date ON tap_events (date);
   `);
   return db;
 }

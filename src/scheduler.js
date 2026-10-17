@@ -2,6 +2,7 @@
 
 const { localParts, isDueOn } = require('./time');
 const { sendPushover } = require('./notify');
+const { pruneHistory } = require('./chores');
 
 // Chores that are scheduled today, past their deadline, not logged today, and not yet alerted.
 function findMissed(db, now = new Date()) {
@@ -46,9 +47,16 @@ async function checkMissed(db, { now = new Date(), send = sendPushover, log = co
 }
 
 function startScheduler(db, { intervalMs = 60_000, send = sendPushover } = {}) {
-  const tick = () => checkMissed(db, { send })
-    .then((names) => names.length && console.log(`Missed chores alerted: ${names.join(', ')}`))
-    .catch((err) => console.error('Scheduler error:', err));
+  const tick = () => {
+    try {
+      pruneHistory(db);
+    } catch (err) {
+      console.error('History cleanup error:', err);
+    }
+    return checkMissed(db, { send })
+      .then((names) => names.length && console.log(`Missed chores alerted: ${names.join(', ')}`))
+      .catch((err) => console.error('Scheduler error:', err));
+  };
   tick();
   return setInterval(tick, intervalMs);
 }

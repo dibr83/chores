@@ -50,6 +50,15 @@ Logs: `journalctl -u chores -f`
 
 Edit, turn off, or delete chores any time. Turning a chore off stops its tap and alerts.
 
+## Scan log and reports
+
+From the admin page:
+
+- **Scan log** (`/scans`): every tap, newest first, in local time. Shows logged, repeat, off-chore, and unknown-tag taps.
+- **Printable report** (`/report`): a chore-by-day grid (done / missed / due later), totals, and the scan log for a date range. Pick the dates and click **Print**. Default is the last 7 days; the maximum range is 186 days.
+
+History is kept for 6 months. The scheduler deletes older taps, completions, and alerts once a minute. Deleting a chore keeps its scan history, but its completions are removed, so the grid no longer shows it. Turning a chore off is the safer choice if you want it to stay in reports.
+
 ## Phones have to reach the VM
 
 Tags only work where the phone can reach `BASE_URL`. On your home Wi-Fi that's the

@@ -41,4 +41,45 @@ function validTime(t) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
 }
 
-module.exports = { TZ, DAYS, localParts, normalizeDays, isDueOn, validTime };
+// Strict YYYY-MM-DD check, rejecting impossible dates like 2026-02-30.
+function isDate(s) {
+  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && addDays(s, 0) === s;
+}
+
+function addDays(date, n) {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+// Clamps to the last day of the target month (2026-08-31 minus 6 months is 2026-02-28).
+function addMonths(date, n) {
+  const [y, m, d] = date.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + n, 1));
+  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d, lastDay));
+  return first.toISOString().slice(0, 10);
+}
+
+// Weekday for a YYYY-MM-DD date string. Timezone-independent: the date has no clock time.
+function dowOf(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  return DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+}
+
+const timeFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ,
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+// ISO timestamp -> "Oct 17, 9:05 AM" in the household timezone.
+function fmtLocal(iso) {
+  return timeFormatter.format(new Date(iso));
+}
+
+module.exports = {
+  TZ, DAYS, localParts, normalizeDays, isDueOn, validTime,
+  isDate, addDays, addMonths, dowOf, fmtLocal,
+};
